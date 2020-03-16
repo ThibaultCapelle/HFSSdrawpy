@@ -699,6 +699,15 @@ class HfssDesign(COMWrapper):
         os.remove(filename)
         return Qs
     
+    def get_source_number(self):
+        return self._solutions.GetEditSourcesCount()
+    
+    def set_source(self, source_id):
+        self._solutions.EditSources([["FieldType:=", "EigenPeakElectricField"],
+                                     ["Name:=", "Modes",
+                                      "Magnitudes:=", ["0" if (i+1)!=source_id else "1" for i in range(self.get_source_number())],
+                                      "Phases:=", ["0deg" for i in range(self.get_source_number())]]])
+    
     
 
 class HfssSetup(HfssPropertyObject):
@@ -1256,46 +1265,6 @@ class HfssModeler(COMWrapper):
         		"TranslateVectorY:="	, vector[1],
         		"TranslateVectorZ:="	, vector[2]]
         )
-    
-    def relative_CS(self, position, name):
-        self._modeler.CreateRelativeCS(
-	[
-		"NAME:RelativeCSParameters",
-		"Mode:="		, "Axis/Position",
-		"OriginX:="		, position[0],
-		"OriginY:="		, position[1],
-		"OriginZ:="		, position[2],
-		"XAxisXvec:="		, "1mm",
-		"XAxisYvec:="		, "0mm",
-		"XAxisZvec:="		, "0mm",
-		"YAxisXvec:="		, "0mm",
-		"YAxisYvec:="		, "1mm",
-		"YAxisZvec:="		, "0mm"
-	], 
-	[
-		"NAME:Attributes",
-		"Name:="		, name
-	])
-        
-    def set_working_CS(self, name):
-        self._modeler.SetWCS(
-	[
-		"NAME:SetWCS Parameter",
-		"Working Coordinate System:=", name,
-		"RegionDepCSOk:="	, False
-	])
-        
-    def rotation(self, name, angle):
-        self._modeler.Rotate([
-		"NAME:Selections",
-		"Selections:="		, name,
-		"NewPartsModelFlag:="	, "Model"
-	], 
-	[
-		"NAME:RotateParameters",
-		"RotateAxis:="		, "Z",
-		"RotateAngle:="		, angle+"deg"
-	])
 
 
     def separate_bodies(self, name):
@@ -1671,8 +1640,8 @@ class Polyline(ModelEntity): # Assume closed polyline
 #        for point in points:
 #            X =
     
-    def unite(self, list_other, name):
-        union = self.modeler.unite(self + list_other, name=name)
+    def unite(self, list_other):
+        union = self.modeler.unite(self + list_other)
         return Polyline(union, self.modeler)
 
     def make_center_line(self, axis): # Expects to act on a rectangle...
