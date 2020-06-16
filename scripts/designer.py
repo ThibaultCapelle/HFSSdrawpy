@@ -487,6 +487,25 @@ class Circuit(object):
         iObject = self.modeler.translate(iObject, iVector)
         return iObject
     
+    def mirror(self, iObject, iVector_point, iVector_normal):
+        '''
+        mirror iObj along a line passing by iVector_point 
+        and with normal iVector_normal
+
+        Inputs:
+        -------
+        iObject (string) : HFSS object name e.g. 'ground_plane'
+        iVector_point (list) : list of iVector_point's STRING coordinates
+        iVector_normal (list) : list of iVector_normal's STRING coordinates
+
+        '''
+        while len(iVector_point) < 3:
+            iVector_point.append('0mm')
+        while len(iVector_normal) < 3:
+            iVector_normal.append('0mm')
+        iObject = self.modeler.mirror(iObject, iVector_point, iVector_normal)
+        return iObject
+    
     def sweep_along_path(self, iObject, path_length):
         '''
         creates 3D structure from 2D one
@@ -679,8 +698,12 @@ class Circuit(object):
 
     def draw_rect(self, name, pos, iSize, z=0, position="corner"):
         assert position in ["corner", "center"]
-        pos = [pos[0], pos[1], z]
-        size = [iSize[0], iSize[1], 0]
+        if len(pos)==2:
+            pos = Vector([pos[0], pos[1], 0])
+        if len(iSize)==2:
+            iSize = Vector([iSize[0], iSize[1], 0])
+        pos = [pos[0], pos[1], pos[2]]
+        size = [iSize[0], iSize[1], iSize[2]]
         if position=="corner":
             rect = self.modeler.draw_rect_corner(pos, size, name=name)
             corner1 = pos

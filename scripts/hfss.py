@@ -629,11 +629,21 @@ class HfssDesign(COMWrapper):
         return self._solutions.ListVariations(solution_name)
     
     def has_fields(self, solution_name, variation):
-        return self._solution.HasFields(solution_name, variation)
+        return self._solutions.HasFields(solution_name, variation)
     
     def has_matrix_data(self, solution_name, variation):
-        return self._solution.HasMatrixData(solution_name, variation)
+        return self._solutions.HasMatrixData(solution_name, variation)
     
+    def export_matrix_data(self, filename):
+        self.get_current_solution_variation()
+        self._solutions.ExportNetworkData(self.current_variation,
+                                         [self.current_solution],
+                                         2,
+                                         filename, 
+        	[
+        "All"
+        	], False, 50, "Z", -1, 0, 15, True, True, False)
+        
     def is_field_available_at(self, solution_name, variation, freq):
         return self._solutions.IsFieldAvailableAt(solution_name,
                                                   variation,
@@ -702,12 +712,19 @@ class HfssDesign(COMWrapper):
     def get_source_number(self):
         return self._solutions.GetEditSourcesCount()
     
-    def set_source(self, source_id):
-        self._solutions.EditSources([["FieldType:=", "EigenPeakElectricField"],
+    def set_source(self, source_id, source_type='peak_electric_field'):
+        if source_type=='peak_electric_field':
+            self._solutions.EditSources([["FieldType:=", "EigenPeakElectricField"],
                                      ["Name:=", "Modes",
                                       "Magnitudes:=", ["0" if (i+1)!=source_id else "1" for i in range(self.get_source_number())],
                                       "Phases:=", ["0deg" for i in range(self.get_source_number())]]])
-    
+        elif source_type=='Stored_energy':
+            self._solutions.EditSources([["FieldType:=", "EigenStoredEnergy"],
+                                     ["Name:=", "Modes",
+                                      "Magnitudes:=", ["0" if (i+1)!=source_id else "1" for i in range(self.get_source_number())],
+                                      "Phases:=", ["0deg" for i in range(self.get_source_number())]]])
+        else:
+            raise AttributeError
     
 
 class HfssSetup(HfssPropertyObject):
@@ -1036,6 +1053,7 @@ class HfssModeler(COMWrapper):
         self._modeler = modeler
         self._boundaries = boundaries
         self._mesh = mesh
+        self.object_created_count=0
 
     def set_units(self, units='m'):
         self._modeler.SetModelUnits(["NAME:Units Parameter",
@@ -1256,7 +1274,14 @@ class HfssModeler(COMWrapper):
             ["NAME:UniteParameters", "KeepOriginals:=", keep_originals]
         )
         return blank_name
-
+    
+    def getFaceId(self, name, vector):
+        return self._modeler.GetFaceByPosition(["NAME:FaceParameters",
+                                                "BodyName:=",name,
+                                                "XPosition:=", vector[0],
+                                                "YPosition:=", vector[1],
+                                                "ZPosition:=", vector[2]])
+    
     def translate(self, name, vector):
         self._modeler.Move(
             self._selections_array(name),
@@ -1265,6 +1290,17 @@ class HfssModeler(COMWrapper):
         		"TranslateVectorY:="	, vector[1],
         		"TranslateVectorZ:="	, vector[2]]
         )
+    
+    def mirror(self, name, point, normal):
+        self._modeler.Mirror(
+            self._selections_array(name),
+            ["NAME:MirrorParameters",
+             "MirrorBaseX:=", point[0],
+             "MirrorBaseY:=", point[1],
+             "MirrorBaseZ:=", point[2],
+             "MirrorNormalX:=", normal[0],
+             "MirrorNormalY:=", normal[1],
+             "MirrorNormalZ:=", normal[2]])
 
 
     def separate_bodies(self, name):
@@ -1328,17 +1364,30 @@ class HfssModeler(COMWrapper):
 			         "MaxLength:=", length]
         self._mesh.AssignLengthOp(params)
         
-    def create_object_from_face(self, name):
+    def create_object_from_face(self, name, face_id=None):
         faces = list(self._modeler.GetFaceIDs(name))
-        faces.sort()
-        face = faces[0]
+        if face_id is None:
+            faces.sort()
+            face = faces[0]
+        else:
+            face=face_id
         self._modeler.CreateObjectFromFaces(["NAME:Selections",
                                             "Selections:="		, name,
                                             "NewPartsModelFlag:="	, "Model"],
             ["NAME:Parameters",["NAME:BodyFromFaceToParameters","FacesToDetach:="	, [int(face)]]], 
             ["CreateGroupsForNewObjects:=", False])
-        return name+'_ObjectFromFace1'
-
+        self.object_created_count+=1
+        return name+'_ObjectFromFace'+str(self.object_created_count)
+    
+    def get_names_by_position(self, vector):
+        return self._modeler.GetBodyNamesByPosition(["NAME:FaceParameters",
+                                                     "XPosition:=", vector[0],
+                                                     "YPosition:=", vector[1],
+                                                     "ZPosition:=", vector[2]])
+    
+    def get_face_center(self, faceid):
+        return self._modeler.GetFaceCenter(faceid)
+        
     def _fillet(self, radius, vertex_index, obj):
         vertices = self._modeler.GetVertexIDsFromObject(obj)
         if isinstance(vertex_index, list):
@@ -1487,17 +1536,46 @@ class HfssModeler(COMWrapper):
         self._boundaries.AssignLumpedRLC(params)
 
     def _make_lumped_port(self, start, end, obj_arr, z0="50ohm", name="LumpPort"):
-        name = increment_name(name, self._boundaries.GetBoundaries())
-        params = ["NAME:"+name]
+        #name = increment_name(name, self._boundaries.GetBoundaries())
+        '''params = ["NAME:"+name]
         params += obj_arr
         params += ["RenormalizeAllTerminals:=", True, "DoDeembed:=", False,
                    ["NAME:Modes", ["NAME:Mode1", "ModeNum:=", 1, "UseIntLine:=", True,
                                    ["NAME:IntLine", "Start:=", start, "End:=", end],
                                    "CharImp:=", "Zpi", "AlignmentGroup:=", 0, "RenormImp:=", "50ohm"]],
                    "ShowReporterFilter:=", False, "ReporterFilter:=", [True],
-                   "FullResistance:=", "50ohm", "FullReactance:=", "0ohm"]
+                   "FullResistance:=", "50ohm", "FullReactance:=", "0ohm"]'''
+        print(obj_arr)
+        print([])
+        print(end)
+        self._boundaries.AssignLumpedPort(
+    	[
+    		"NAME:"+name,
+    		"Objects:="		, obj_arr,
+    		"DoDeembed:="		, False,
+    		"RenormalizeAllTerminals:=", True,
+    		[
+    			"NAME:Modes",
+    			[
+    				"NAME:Mode1",
+    				"ModeNum:="		, 1,
+    				"UseIntLine:="		, True,
+    				[
+    					"NAME:IntLine",
+    					"Start:="		, ["-7mm","0mm","0mm"],
+					"End:="			, ["-7mm","0mm","-0.27mm"]
+    				],
+    				"AlignmentGroup:="	, 0,
+    				"CharImp:="		, "Zpi",
+    				"RenormImp:="		, "50ohm"
+    			]
+    		],
+    		"ShowReporterFilter:="	, False,
+    		"ReporterFilter:="	, [True],
+    		"Impedance:="		, "50ohm"
+    	])
 
-        self._boundaries.AssignLumpedPort(params)
+        #self._boundaries.AssignLumpedPort(params)
         
     def make_material(self, obj, material):
         self._modeler.ChangeProperty(["NAME:AllTabs",
@@ -1530,10 +1608,10 @@ class HfssModeler(COMWrapper):
         return self.parent.eval_var_str(name, unit=unit)
     
     def delete_all_objects(self):
+        self.object_created_count=0
         objects = []
         for ii in range(int(self._modeler.GetNumObjects())):
             objects.append(self._modeler.GetObjectName(str(ii)))
-#        print(objects)
         self._modeler.Delete(self._selections_array(*objects))
         
     def get_matched_object_name(self, name):
