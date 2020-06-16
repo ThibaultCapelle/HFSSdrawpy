@@ -648,15 +648,20 @@ class HfssDesign(COMWrapper):
     def Clear_Field_Clac_Stack(self):
         self._fields_calc.CalcStack("Clear")
         
-    def get_current_solution_variation(self, variation_index=0):
+    def get_current_solution_variation(self, variation_index=0,
+                                       solution_type='eigenmode'):
         self.current_solution=self.get_solution_names()[-1]
-        self.current_variation=self.get_variations(self.current_solution)[variation_index]
+        self.current_variation=self.get_variations(self.current_solution,
+                                                   solution_type=solution_type)[variation_index]
     
     def get_solution_names(self):
         return self._solutions.GetValidISolutionList(True)
-    
-    def get_variations(self, solution_name):
-        return self._solutions.ListVariations(solution_name)
+        
+    def get_variations(self, solution_name, solution_type='eigenmode'):
+        if solution_type=='eigenmode':
+            return self._solutions.ListVariations(solution_name)
+        elif solution_type=='electrostatic':
+            return self._solutions.GetAvailableVariations(solution_name)
     
     def has_fields(self, solution_name, variation):
         return self._solutions.HasFields(solution_name, variation)
@@ -664,8 +669,16 @@ class HfssDesign(COMWrapper):
     def has_matrix_data(self, solution_name, variation):
         return self._solutions.HasMatrixData(solution_name, variation)
     
+    def export_solution_data(self, filename):
+        self.get_current_solution_variation(solution_type='electrostatic')
+        self._setup_module.ExportSolnData(self.current_solution,
+                                          "Matrix",
+                                          False,
+                                          self.current_variation,
+                                          filename)
+    
     def export_matrix_data(self, filename):
-        self.get_current_solution_variation()
+        self.get_current_solution_variation(solution_type='eigenmode')
         self._solutions.ExportNetworkData(self.current_variation,
                                          [self.current_solution],
                                          2,
@@ -1513,6 +1526,23 @@ class HfssModeler(COMWrapper):
                                 		"Thickness:="		, thickness,
                                 		"BothSides:="		, bothsides
                                 	])
+    
+    def assign_material(self, obj, material):
+        self._modeler.AssignMaterial(
+                                    	[
+                                    		"NAME:Selections",
+                                    		"AllowRegionDependentPartSelectionForPMLCreation:=", True,
+                                    		"AllowRegionSelectionForPMLCreation:=", True,
+                                    		"Selections:="		, obj
+                                    	], 
+                                    	[
+                                    		"NAME:Attributes",
+                                    		"MaterialValue:="	, material,
+                                    		"SolveInside:="		, True,
+                                    		"IsMaterialEditable:="	, True,
+                                    		"UseMaterialAppearance:=", False,
+                                    		"IsLightweight:="	, False
+                                    	])
                 
     def mirrorZ(self, obj):
         self._modeler.Mirror([
