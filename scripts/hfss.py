@@ -423,6 +423,11 @@ class HfssDesign(COMWrapper):
         self._reporter = design.GetModule("ReportSetup")
         self._modeler = design.SetActiveEditor("3D Modeler")
         self._optimetrics = design.GetModule("Optimetrics")
+        try:
+            self._maxwell_module = design.GetModule("MaxwellParameterSetup")
+        except:
+            print('error')
+            self._maxwell_module=None
         self.modeler = HfssModeler(self, self._modeler, self._boundaries,
                                    self._mesh)
         self.variables = {}
@@ -505,6 +510,31 @@ class HfssDesign(COMWrapper):
                 "BasisOrder:=", basis_order
             ])
         return HfssEMSetup(self, name)
+    
+    def create_electrostatic_setup(self, name="Setup",
+                                   min_pass=5, max_pass=15,
+                                   percent_refinement=30):
+        name = increment_name(name, self.get_setup_names())
+        self._setup_module.InsertSetup("Electrostatic", 
+                                    	[
+                                    		"NAME:"+name,
+                                    		"Enabled:="		, True,
+                                    		[
+                                    			"NAME:MeshLink",
+                                    			"ImportMesh:="		, False
+                                    		],
+                                    		"MaximumPasses:="	, max_pass,
+                                    		"MinimumPasses:="	, min_pass,
+                                    		"MinimumConvergedPasses:=", 1,
+                                    		"PercentRefinement:="	, percent_refinement,
+                                    		"SolveFieldOnly:="	, False,
+                                    		"PercentError:="	, 1,
+                                    		"SolveMatrixAtLast:="	, True,
+                                    		"PercentError:="	, 1,
+                                    		"UseIterativeSolver:="	, False,
+                                    		"RelativeResidual:="	, 1E-06,
+                                    		"NonLinearResidual:="	, 0.001
+                                    	])
 
     def delete_setup(self, name):
         if name in self.get_setup_names():
@@ -698,6 +728,15 @@ class HfssDesign(COMWrapper):
         freqs, Qs, numbers = self.parse_file(filename=filename)
         os.remove(filename)
         return Qs
+    
+    def assign_matrix(self, obj, name="Matrix"):
+        if not isinstance(obj, list):
+            obj=[obj]
+        entries=["Name:MatrixEntry"]
+        for item in obj:
+            entries.append(["NAME:MatrixEntry", "Source:=",  item, "NumberOfTurns:="	, "1"])
+        self._maxwell_module.AssignMatrix(["NAME:"+name, entries, ["NAME:MatrixGroup"]])
+    
     
     def get_source_number(self):
         return self._solutions.GetEditSourcesCount()
@@ -1290,7 +1329,14 @@ class HfssModeler(COMWrapper):
         else:
             name = str(obj)+'_'+name
             self._boundaries.AssignPerfectE(["NAME:"+name, "Objects:=", [obj], "InfGroundPlane:=", False])
-            
+    
+    def assign_voltage(self, obj, name='Voltage', voltage='1V'):
+        if isinstance(obj, list):
+            self._boundaries.AssignVoltage(["NAME:"+name, "Objects:=", obj, "Voltage:=", voltage])
+        else:
+            name = str(obj)+'_'+name
+            self._boundaries.AssignVoltage(["NAME:"+name, "Objects:=", [obj], "Voltage:=", voltage])
+    
     def assign_perfect_E_faces(self, name):
         # this is very peculiar to cavity Si chips
         faces = list(self._modeler.GetFaceIDs(name))
