@@ -513,7 +513,8 @@ class HfssDesign(COMWrapper):
     
     def create_electrostatic_setup(self, name="Setup",
                                    min_pass=5, max_pass=15,
-                                   percent_refinement=30):
+                                   percent_refinement=30,
+                                   percent_error=1):
         name = increment_name(name, self.get_setup_names())
         self._setup_module.InsertSetup("Electrostatic", 
                                     	[
@@ -530,7 +531,7 @@ class HfssDesign(COMWrapper):
                                     		"SolveFieldOnly:="	, False,
                                     		"PercentError:="	, 1,
                                     		"SolveMatrixAtLast:="	, True,
-                                    		"PercentError:="	, 1,
+                                    		"PercentError:="	, percent_error,
                                     		"UseIterativeSolver:="	, False,
                                     		"RelativeResidual:="	, 1E-06,
                                     		"NonLinearResidual:="	, 0.001
@@ -1386,6 +1387,16 @@ class HfssModeler(COMWrapper):
             name = str(obj)+'_'+name
             self._boundaries.AssignVoltage(["NAME:"+name, "Objects:=", [obj], "Voltage:=", voltage])
     
+    def assign_floating(self, obj, name="Floating", value='0'):
+        if not isinstance(obj, list):
+            obj=[obj]
+        self._boundaries.AssignFloating(
+                    	[
+                    		"NAME:Floating1",
+                    		"Objects:="		, obj,
+                    		"Value:="		, value
+                    	])
+        
     def assign_perfect_E_faces(self, name):
         # this is very peculiar to cavity Si chips
         faces = list(self._modeler.GetFaceIDs(name))
